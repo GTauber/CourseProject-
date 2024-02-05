@@ -3,10 +3,9 @@ server:
 
 spring:
   r2dbc:
-    url: r2dbc:mysql://localhost:3306/as_authuser
+    url: r2dbc:mysql://localhost:3309/as_authuser
     username: root
-    password: root
-
+    password: testeroot
 
 
 logging:
