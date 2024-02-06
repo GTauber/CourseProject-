@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  as-authUser-mysql:
+    image: mysql:latest
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: testeroot
+      MYSQL_DATABASE: as_authuser
+      MYSQL_USER: userNotRoot
+      MYSQL_PASSWORD: pwdNotRoot
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: always
+    networks:
+      - authUserNetwork
+
+networks:
+  authUserNetwork:
+    driver: bridge
+
+volumes:
+  mysql_data:
