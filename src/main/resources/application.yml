@@ -2,11 +2,26 @@ server:
   port: 8087
 
 spring:
+  profiles:
+    default: local
+  application:
+    name: as_authUser
   r2dbc:
-    url: r2dbc:mysql://localhost:3309/as_authuser
-    username: root
-    password: testeroot
+    url: r2dbc:mysql://localhost:3306/as_authuser
+    username: tauber
+    password: secret
+  docker:
+    compose:
+      file: Docker/authuser-compose/docker-compose.yml
+      lifecycle-management: start_only
+      profiles:
+        active: docker
 
+  flyway:
+    url: jdbc:mysql://localhost:3306/as_authuser
+    user: tauber
+    password: secret
+#    enabled: false
 
 logging:
   level:
@@ -14,5 +29,14 @@ logging:
     io:
       r2dbc:
         pool: debug
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, env, conditions
+  endpoint:
+    health:
+      show-details: always
 
 

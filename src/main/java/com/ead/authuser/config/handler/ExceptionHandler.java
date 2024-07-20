@@ -3,15 +3,10 @@ package com.ead.authuser.config.handler;
 import com.ead.authuser.models.entity.Response;
 import com.ead.authuser.models.exceptions.ApplicationException;
 import com.ead.authuser.models.exceptions.BaseException;
-import com.ead.authuser.models.exceptions.EmailAlreadyExistsException;
-import com.ead.authuser.models.exceptions.UserNotFoundException;
-import com.ead.authuser.models.exceptions.UsernameAlreadyExistsException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
@@ -21,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebExceptionHandler;
@@ -43,11 +37,12 @@ public class ExceptionHandler implements WebExceptionHandler {
             return this.handleException(exchange, error -> {
                 exchange.getResponse().setStatusCode(HttpStatus.resolve(error.getStatus().value()));
                 exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-                return exchange.getResponse().writeWith(Mono.just(dataBufferFactory.wrap(objectMapper.writeValueAsBytes(error))));
+                return exchange.getResponse()
+                    .writeWith(Mono.just(dataBufferFactory.wrap(objectMapper.writeValueAsBytes(error))));
             }, throwable);
 
         } catch (JsonProcessingException ex) {
-            log.error("Não foi possível mapear a exceção na chamada [{}]", exchange.getRequest().getPath().value());
+            log.error("Error mapping exception in the request [{}]", exchange.getRequest().getPath().value());
             exchange.getResponse().setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
             return exchange.getResponse().setComplete();
         }
@@ -61,44 +56,58 @@ public class ExceptionHandler implements WebExceptionHandler {
 
     private Response<?> createErrorResponse(Throwable throwable) {
 
-        if (throwable instanceof UserNotFoundException ex) return buildResponse(ex);
-        if (throwable instanceof UsernameAlreadyExistsException ex) return buildResponse(ex);
-        if (throwable instanceof EmailAlreadyExistsException ex) return buildResponse(ex);
-
-//        if (throwable instanceof WebExchangeBindException ex) { TODO - Implement this
-//            return new ErrorResponse(ResponseCode.VALIDATION_ERROR, this.getValidationErrors(ex));
-//        }
+        if (throwable instanceof WebExchangeBindException ex) {
+            return buildValidationErrorResponse(this.getValidationErrors(ex));
+        }
+        if (throwable instanceof BaseException ex) {
+            return buildResponse(ex);
+        }
 
         return buildResponse(new ApplicationException());
     }
 
-    private <T extends BaseException> Response<?>  buildResponse(T throwable) {
+    private Response<?> buildValidationErrorResponse(List<String> validationErrors) {
         return Response.builder()
             .timestamp(LocalDateTime.now())
-            .statusCode(Integer.parseInt(throwable.getErrorCode()))
+            .statusCode(HttpStatus.BAD_REQUEST.value())
+            .status(HttpStatus.BAD_REQUEST)
+            .reason(String.join(", ", validationErrors))
+            .build();
+    }
+
+    private <T extends BaseException> Response<?> buildResponse(T throwable) {
+        return Response.builder()
+            .timestamp(LocalDateTime.now())
+            .statusCode(throwable.getResponseCode().getStatus().value())
             .status(throwable.getResponseCode().getStatus())
             .reason(throwable.getMessage())
             .build();
     }
 
+    protected List<String> getValidationErrors(WebExchangeBindException ex) {
+        return ex.getAllErrors().stream()
+            .map(DefaultMessageSourceResolvable::getDefaultMessage)
+            .toList();
+    }
+
+
+/*    Complex mapping validation exception method: //TODO: Update this method.
     protected Map<String, String> getValidationErrors(WebExchangeBindException ex) {
         return ex.getAllErrors()
             .stream()
-            .collect(Collectors.toMap(this::formatErrorCode,
-                Objects.requireNonNull(DefaultMessageSourceResolvable::getDefaultMessage)));
+            .collect(Collectors.toMap(error -> {
+                String errorCode = Objects.requireNonNull(error.getCode()).toLowerCase();
+                if (error instanceof FieldError fieldError) {
+                    return String.format("%s.%s", fieldError.getField(), errorCode);
+                }
+                return String.format("%s.%s", error.getObjectName(), errorCode);
+            }, Objects.requireNonNull(DefaultMessageSourceResolvable::getDefaultMessage)));
     }
-
-    private String formatErrorCode(org.springframework.validation.ObjectError error) {
-        var errorCode = Objects.requireNonNull(error.getCode()).toLowerCase();
-        if (error instanceof FieldError ex) {
-            return String.format("%s.%s", ex.getField(), errorCode);
-        }
-        return String.format("%s.%s", error.getObjectName(), errorCode);
-    }
+*/
 
     private void logError(ServerWebExchange exchange, Throwable throwable) {
         if (log.isErrorEnabled()) {
-            log.error("The following error occured in the call [{}] [{}]: [{}]",
+            log.error("The following error occurred in the call [{}] [{}]",
                 exchange.getRequest().getMethod(),
                 exchange.getRequest().getPath().value(),
                 throwable);
